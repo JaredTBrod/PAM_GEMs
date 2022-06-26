@@ -18,24 +18,34 @@ The folder structure is broken out by the major categories of the manuscript.
 
 All code is distributed as Jupyter Notebooks written in Python.
 Dependencies:
+
 jupyter notebook (includes ipython notebook): 
 	https://jupyter.org/
+	
 cobrapy: 
 	https://opencobra.github.io/cobrapy/
+	
 pandas: 
 	https://pandas.pydata.org/
+	
 numpy: 
 	https://numpy.org/
+	
 csv: 
 	pip install csv
+	
 matplotlib:
 	https://matplotlib.org/
+	
 seaborn:
 	https://seaborn.pydata.org/
+	
 scipy:
 	https://scipy.org/
+	
 openpyxl:
 	conda install -c anaconda openpyxl
+	
 
 Some folders have a subfolder called 'fcns' which contains a .py file called 'modeling_functions.py' containing a series of functions used to generate outputs. This is mostly to decrease how "busy" the cells are in the Jupyter Notebooks. However, much of the methodology is captured in these functions.
 
