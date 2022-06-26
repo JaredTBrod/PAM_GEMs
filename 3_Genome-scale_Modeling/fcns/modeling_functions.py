@@ -59,13 +59,13 @@ def update_biomass(model, rxn, stoich, metabolite):
     
     model.repair()
 
-    print(model.reactions.get_by_id(rxn).reaction)
-    print('')
-    print(model.metabolites.get_by_id(met.id).formula)
-    print('')
-    print(model.metabolites.get_by_id(met.id).formula_weight)
-    print('')
-    print(model.reactions.get_by_id(rxn).check_mass_balance())
+#     print(model.reactions.get_by_id(rxn).reaction)
+#     print('')
+#     print(model.metabolites.get_by_id(met.id).formula)
+#     print('')
+#     print(model.metabolites.get_by_id(met.id).formula_weight)
+#     print('')
+#     print(model.reactions.get_by_id(rxn).check_mass_balance())
     return model
 
 #############################################
@@ -116,9 +116,7 @@ def figure_2LL(model):
                 gDW = iDW
                 cells = (gDW/mgCell)
 
-                photon_usage = pd.DataFrame(data=[0,0],index = ['Delivered','Absorbed'],columns=['0'])
                 biomass = pd.DataFrame(data=[gDW,cells],index = ['Biomass','Cells'],columns=['0']) # add it up at the end of each simulation
-                o2_check = pd.DataFrame(data=[0],index = ['Max oxygen evolution'],columns=['0'])
 
                 for t in range(time_interval,1440+time_interval,time_interval): #One simulation every 20 minutes from t=0 to t=24 hrs (1440 min)
                     import math as m
@@ -154,7 +152,6 @@ def figure_2LL(model):
                     # Photon_flux is the initial amount of light delivered to the culture at each wavelength from 400-700 nm
                     photon_flux = (rel['rel_height'].values)*irrad*xsec/10000*time_interval*60. #umol/(m2*s) * cm2 * 1m2/10000cm2 * 60s/min * min = umol photons/time interval
                     total_photons = sum(photon_flux)
-                    photon_usage[str(t)]=[total_photons,0]
 
                     total_absorbed = 0.
 
@@ -171,20 +168,16 @@ def figure_2LL(model):
                     slice_o2 = (Ps*(1-m.exp(-1*alpha*conv_abs/Ps))*(m.exp(-1*beta*conv_abs/Ps)))-resp #umol O2 cell-1 s-1
                     ti_o2 = ti_o2+(slice_o2*(cells)*60.*time_interval) #umol O2 cell-1 s-1 * cells * s/min * min/TI = umol O2/TI
 
-                    o2_check[str(t)]=ti_o2
-
                     o2evo = ti_o2
-                    model.reactions.EX_o2_e.upper_bound = o2evo # o2evo
-                    model.reactions.EX_o2_e.lower_bound = 0.9*o2evo#0. #                            <----Po Constraint
-                    photon_usage[str(t)]['Absorbed']=total_absorbed
-
+                    
+                    model.reactions.EX_o2_e.bounds = (0.99*o2evo,o2evo)#                            <----Po Constraint
+                    
                     ngam = resp*60.*time_interval*cells
                     model.reactions.NGAM.lower_bound = ngam
-                    cef_rate = 5.*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
+                    cef_rate = 1.1*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
                     model.reactions.CEF_h.upper_bound = cef_rate
-
-                    model.reactions.EX_photon_e.lower_bound = total_absorbed*-1.
-                    model.reactions.EX_photon_e.upper_bound = total_absorbed*-0.9999999
+                                        
+                    model.reactions.EX_photon_e.bounds = (total_absorbed*-1.,total_absorbed*-0.9999)
 
                 ###### Parameters for PSII fluorescence
 
@@ -208,9 +201,7 @@ def figure_2LL(model):
 
                     regNPQ = round(yNPQ_LL,2) # Y(NPQ)
 
-                    regFvFm = round((1-FvFm_LL),2) # Photons lost upstream of PSII (1-Fv/Fm)
-
-                    unrNPQ = round((1-phoYII-regNPQ-regFvFm),2) # Y(NO)
+                    unrNPQ = round((1-phoYII-regNPQ),2) # Y(NO)
 
                 ### Edit model constraints with the appropriate values
 
@@ -228,12 +219,10 @@ def figure_2LL(model):
                     m2 = model.metabolites.photon_YNPQ_u
                     m4 = model.metabolites.photon_YNO_u
                     m3 = model.metabolites.photon_h
-                    m5 = model.metabolites.get_by_id('photon_1-FvFm_u')
 
                     rxn.add_metabolites({m1:phoYII,
                                         m2:regNPQ,
                                         m4:unrNPQ,
-                                        m5:regFvFm,
                                         m3:-1.})
 
                     model.reactions.DM_photon_c.upper_bound = 0. # constrained                                    <----hv Constraint
@@ -244,8 +233,8 @@ def figure_2LL(model):
                     D1_rate = 7e-6# # LL: umol D1/mgDW h-1         <---- D1 Constraint
                     D1_rate = D1_rate * gDW/60.# ugD1 ugDW-1 min-1 * mgDW * 1h/60 min = umolD1 min-1
                     D1_rate = D1_rate * time_interval # umolD1 min-1 * min/TI = umol D1/TI
-                    model.reactions.NGAM_D1_u.lower_bound = D1_rate #
-                    model.reactions.NGAM_D1_u.upper_bound = 1.0001*(D1_rate) #
+                    
+                    model.reactions.NGAM_D1_u.bounds = (D1_rate, 1.001*(D1_rate))                    
 
                     ## Solve the model
                     model.objective = 'bof_c'
@@ -307,9 +296,7 @@ def figure_2HL(model):
                 gDW = iDW
                 cells = (gDW/mgCell)
 
-                photon_usage = pd.DataFrame(data=[0,0],index = ['Delivered','Absorbed'],columns=['0'])
                 biomass = pd.DataFrame(data=[gDW,cells],index = ['Biomass','Cells'],columns=['0']) # add it up at the end of each simulation
-                o2_check = pd.DataFrame(data=[0],index = ['Max oxygen evolution'],columns=['0'])
 
                 for t in range(time_interval,720+time_interval,time_interval): #One simulation every 20 minutes from t=0 to t=24 hrs (1440 min)
                     import math as m
@@ -346,7 +333,6 @@ def figure_2HL(model):
                     # Photon_flux is the initial amount of light delivered to the culture at each wavelength from 400-700 nm
                     photon_flux = (rel['rel_height'].values)*irrad*xsec/10000*time_interval*60. #umol/(m2*s) * cm2 * 1m2/10000cm2 * 60s/min * min = umol photons/time interval
                     total_photons = sum(photon_flux)
-                    photon_usage[str(t)]=[total_photons,0]
 
                     total_absorbed = 0.
 
@@ -363,20 +349,16 @@ def figure_2HL(model):
                     slice_o2 = (Ps*(1-m.exp(-1*alpha*conv_abs/Ps))*(m.exp(-1*beta*conv_abs/Ps)))-resp #umol O2 cell-1 s-1
                     ti_o2 = ti_o2+(slice_o2*(cells)*60.*time_interval) #umol O2 cell-1 s-1 * cells * s/min * min/TI = umol O2/TI
 
-                    o2_check[str(t)]=ti_o2
-
                     o2evo = ti_o2
-                    model.reactions.EX_o2_e.upper_bound = o2evo #1000. #  
-                    model.reactions.EX_o2_e.lower_bound = 0.9*o2evo#-1000. # 
-                    photon_usage[str(t)]['Absorbed']=total_absorbed
 
+                    model.reactions.EX_o2_e.bounds = (0.99*o2evo,o2evo)
+                    
                     ngam = resp*60.*time_interval*cells
                     model.reactions.AOX_m.lower_bound = ngam
-                    cef_rate = 5.*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
+                    cef_rate = 0.7*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
                     model.reactions.CEF_h.upper_bound = cef_rate
-
-                    model.reactions.EX_photon_e.lower_bound = total_absorbed*-1.
-                    model.reactions.EX_photon_e.upper_bound = total_absorbed*-0.9999999
+                    
+                    model.reactions.EX_photon_e.bounds = (total_absorbed*-1.,total_absorbed*-0.9999)
 
                 ###### Parameters for PSII fluorescence
 
@@ -400,9 +382,7 @@ def figure_2HL(model):
 
                     regNPQ = round(yNPQ_HL,2) # Y(NPQ)
 
-                    regFvFm = round((1-FvFm_HL),2) # Photons lost upstream of PSII (1-Fv/Fm)
-
-                    unrNPQ = round((1-phoYII-regNPQ-regFvFm),2) # Y(NO)
+                    unrNPQ = round((1-phoYII-regNPQ),2) # Y(NO)
 
                 ### Edit model constraints with the appropriate values
 
@@ -419,24 +399,22 @@ def figure_2HL(model):
                     m2 = model.metabolites.photon_YNPQ_u
                     m4 = model.metabolites.photon_YNO_u
                     m3 = model.metabolites.photon_h
-                    m5 = model.metabolites.get_by_id('photon_1-FvFm_u')
 
                     rxn.add_metabolites({m1:phoYII,
                                         m2:regNPQ,
                                         m4:unrNPQ,
-                                        m5:regFvFm,
                                         m3:-1.})
                 ## Set photon constraints
                     model.reactions.DM_photon_c.upper_bound = 0. # constrained
 
                     # Add D1 damage cost uncoupled to PSII
                    # Damage rates
-                    D1_rate = 2.52e-4# # LL: umol D1/mgDW h-1         <---- D1 Constraint
+                    D1_rate = 2.52e-4# # HL: umol D1/mgDW h-1         <---- D1 Constraint
                     D1_rate = D1_rate * gDW/60.# ugD1 ugDW-1 min-1 * mgDW * 1h/60 min = umolD1 min-1
                     D1_rate = D1_rate * time_interval # umolD1 min-1 * min/TI = umol D1/TI
-                    model.reactions.NGAM_D1_u.lower_bound = D1_rate #0.#
-                    model.reactions.NGAM_D1_u.upper_bound = 1.0001*(D1_rate)#0.#
-
+                    
+                    model.reactions.NGAM_D1_u.bounds = (D1_rate, 1.0001*(D1_rate))
+                    
                     ## Solve the model
                     model.objective = 'bof_c'
                     solution = model.optimize() 
@@ -500,9 +478,7 @@ def figure_2HL_HCO3(model):
                 gDW = iDW
                 cells = (gDW/mgCell)
 
-                photon_usage = pd.DataFrame(data=[0,0],index = ['Delivered','Absorbed'],columns=['0'])
                 biomass = pd.DataFrame(data=[gDW,cells],index = ['Biomass','Cells'],columns=['0']) # add it up at the end of each simulation
-                o2_check = pd.DataFrame(data=[0],index = ['Max oxygen evolution'],columns=['0'])
 
                 for t in range(time_interval,720+time_interval,time_interval): #One simulation every 20 minutes from t=0 to t=24 hrs (1440 min)
                     import math as m
@@ -539,7 +515,6 @@ def figure_2HL_HCO3(model):
                     # Photon_flux is the initial amount of light delivered to the culture at each wavelength from 400-700 nm
                     photon_flux = (rel['rel_height'].values)*irrad*xsec/10000*time_interval*60. #umol/(m2*s) * cm2 * 1m2/10000cm2 * 60s/min * min = umol photons/time interval
                     total_photons = sum(photon_flux)
-                    photon_usage[str(t)]=[total_photons,0]
 
                     total_absorbed = 0.
 
@@ -556,20 +531,16 @@ def figure_2HL_HCO3(model):
                     slice_o2 = (Ps*(1-m.exp(-1*alpha*conv_abs/Ps))*(m.exp(-1*beta*conv_abs/Ps)))-resp #umol O2 cell-1 s-1
                     ti_o2 = ti_o2+(slice_o2*(cells)*60.*time_interval) #umol O2 cell-1 s-1 * cells * s/min * min/TI = umol O2/TI
 
-                    o2_check[str(t)]=ti_o2
-
                     o2evo = ti_o2
-                    model.reactions.EX_o2_e.upper_bound = o2evo #1000. #  
-                    model.reactions.EX_o2_e.lower_bound = 0.9*o2evo#-1000. # 
-                    photon_usage[str(t)]['Absorbed']=total_absorbed
+
+                    model.reactions.EX_o2_e.bounds = (0.99*o2evo, o2evo)
 
                     ngam = resp*60.*time_interval*cells
                     model.reactions.AOX_m.lower_bound = ngam
-                    cef_rate = 5.*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
+                    cef_rate = 0.73*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
                     model.reactions.CEF_h.upper_bound = cef_rate
-
-                    model.reactions.EX_photon_e.lower_bound = total_absorbed*-1.
-                    model.reactions.EX_photon_e.upper_bound = total_absorbed*-0.9999999
+                    
+                    model.reactions.EX_photon_e.bounds = (total_absorbed*-1.,total_absorbed*-0.9999)
 
                 ###### Parameters for PSII fluorescence
 
@@ -593,9 +564,7 @@ def figure_2HL_HCO3(model):
 
                     regNPQ = round(yNPQ_HL,2) # Y(NPQ)
 
-                    regFvFm = round((1-FvFm_HL),2) # Photons lost upstream of PSII (1-Fv/Fm)
-
-                    unrNPQ = round((1-phoYII-regNPQ-regFvFm),2) # Y(NO)
+                    unrNPQ = round((1-phoYII-regNPQ),2) # Y(NO)
 
                 ### Edit model constraints with the appropriate values
 
@@ -612,12 +581,10 @@ def figure_2HL_HCO3(model):
                     m2 = model.metabolites.photon_YNPQ_u
                     m4 = model.metabolites.photon_YNO_u
                     m3 = model.metabolites.photon_h
-                    m5 = model.metabolites.get_by_id('photon_1-FvFm_u')
 
                     rxn.add_metabolites({m1:phoYII,
                                         m2:regNPQ,
                                         m4:unrNPQ,
-                                        m5:regFvFm,
                                         m3:-1.})
                 ## Set photon constraints
                     model.reactions.DM_photon_c.upper_bound = 0. # constrained
@@ -627,8 +594,8 @@ def figure_2HL_HCO3(model):
                     D1_rate = 2.52e-4# # LL: umol D1/mgDW h-1         <---- D1 Constraint
                     D1_rate = D1_rate * gDW/60.# ugD1 ugDW-1 min-1 * mgDW * 1h/60 min = umolD1 min-1
                     D1_rate = D1_rate * time_interval # umolD1 min-1 * min/TI = umol D1/TI
-                    model.reactions.NGAM_D1_u.lower_bound = D1_rate #0.#
-                    model.reactions.NGAM_D1_u.upper_bound = 1.0001*(D1_rate)#0.#
+                    
+                    model.reactions.NGAM_D1_u.bounds = (D1_rate,1.0001*(D1_rate))
 
                     ## Solve the model
                     model.objective = 'bof_c'
@@ -661,49 +628,11 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
         mgCell = 19.1/1e9 # mgDW per cell <-- LL +/- 2.0
         innoc = 2.8e6*volume # cells/mL * total mL
         duration = 1440 # total length of the simulation
-        #O2 rate equation  
-        # input: umol photons cell-1 s-1
-        # Output: umol O2 cell-1 s-1
-        # Mean
-        Ps = 2.94e-11 # umol O2 cell-1 s-1
-        alpha = 9.82e-2
-        beta = 0.0
-        resp = 1.83e-12
-    #     # upper bound    
-    #     Ps = 3.06e-11 # umol O2 cell-1 s-1
-    #     alpha = 9.75e-2
-    #     beta = 0.0
-    #     resp = 1.75e-12
-    #     # lower bound
-    #     Ps = 2.83e-11 # umol O2 cell-1 s-1
-    #     alpha = 9.91e-2
-    #     beta = 0.0
-    #     resp = 1.92e-12
-        irrad = 60.  
-       
+        
     if light == 'HL':
         mgCell = 20.4/1e9 # mgDW per cell <-- HL Bounds 20.4+/- 1.4
         innoc = 3.5e6*volume # cells/mL * total mL
         duration = 720 # total length of the simulation
-    #     # HL_bicarb
-        Ps = (2.46e-11)*1.15 # umol O2 cell-1 s-1
-        alpha = (9.47e-2)
-        beta = 0.0
-        resp = 4.72e-12
-    #    #upper bound
-        # HL
-    #     Ps = (2.54e-11) # umol O2 cell-1 s-1
-    #     alpha = (1.05e-1)
-    #     beta = 3.67e-5
-    #     resp = 4.28e-12    
-    #   #lower bound
-        ## HL
-    #     Ps = (2.35e-11) # umol O2 cell-1 s-1
-    #     alpha = (8.5e-2)#
-    #     beta = 2.5e-10
-    #     resp = 5.15e-12     
-        irrad =  600. #uE 
-
     
     iDW = mgCell*innoc # initial culture biomass
 
@@ -715,10 +644,9 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
     cells = (gDW/mgCell)
     #__________________________Initialize variables to collect output data___________________________________
     # Initialize an unused photon count
-    photon_usage = pd.DataFrame(data=[0,0],index = ['Delivered','Absorbed'],columns=['0'])
     biomass = pd.DataFrame(data=[gDW,cells],index = ['Biomass','Cells'],columns=['0']) # add it up at the end of each simulation
     # Initialize an O2 evolution rate tracker
-    o2_check = pd.DataFrame(data=[0],index = ['Max oxygen evolution'],columns=['0'])
+
     for t in range(time_interval,duration+time_interval,time_interval): #One simulation every 20 minutes
         import math as m
         interval_bm = 0 #initializes the total biomass
@@ -730,11 +658,52 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
         gDW = biomass[str(t-time_interval)]['Biomass'] #mg DW
         cells = (gDW/mgCell)
 
+        if light == 'LL':
+            #O2 rate equation  
+            # input: umol photons cell-1 s-1
+            # Output: umol O2 cell-1 s-1
+            # Mean
+            Ps = 2.94e-11 # umol O2 cell-1 s-1
+            alpha = 9.82e-2
+            beta = 0.0
+            resp = 1.83e-12
+            #     # upper bound    
+            #     Ps = 3.06e-11 # umol O2 cell-1 s-1
+            #     alpha = 9.75e-2
+            #     beta = 0.0
+            #     resp = 1.75e-12
+            #     # lower bound
+            #     Ps = 2.83e-11 # umol O2 cell-1 s-1
+            #     alpha = 9.91e-2
+            #     beta = 0.0
+            #     resp = 1.92e-12
+            irrad = 60.  
+               
+        if light == 'HL':
+            #     # HL_bicarb
+            Ps = (2.46e-11)*1.15 # umol O2 cell-1 s-1
+            alpha = (9.47e-2)
+            beta = 0.0
+            resp = 4.72e-12
+            #    #upper bound
+                # HL
+            #     Ps = (2.54e-11) # umol O2 cell-1 s-1
+            #     alpha = (1.05e-1)
+            #     beta = 3.67e-5
+            #     resp = 4.28e-12    
+            #   #lower bound
+                ## HL
+            #     Ps = (2.35e-11) # umol O2 cell-1 s-1
+            #     alpha = (8.5e-2)#
+            #     beta = 2.5e-10
+            #     resp = 5.15e-12     
+            irrad =  600. #uE 
+
+
         # Calculate photons and O2 uptake
         # Photon_flux is the initial amount of light delivered to the culture at each wavelength from 400-700 nm
         photon_flux = (rel['rel_height'].values)*irrad*xsec/10000*time_interval*60. #umol/(m2*s) * cm2 * 1m2/10000cm2 * 60s/min * min = umol photons/time interval
         total_photons = sum(photon_flux)
-        photon_usage[str(t)]=[total_photons,0]
         
        # For each slice:
         #     - Walk through the spectrum calculating absorbed photons and updating the initial value (delivered)
@@ -755,31 +724,34 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
         conv_abs = total_absorbed/time_interval/60./(cells) # converts abs to O2 evo curve units  umol/TI * TI/min * min/s * 1/cells => umol/(mgchla*s)
         slice_o2 = (Ps*(1-m.exp(-1*alpha*conv_abs/Ps))*(m.exp(-1*beta*conv_abs/Ps)))-resp #umol O2 cell-1 s-1
         ti_o2 = ti_o2+(slice_o2*(cells)*60.*time_interval) #umol O2 cell-1 s-1 * cells * s/min * min/TI = umol O2/TI
-       
-        o2_check[str(t)]=ti_o2
 
         if Po_const == True:
             # Constrained
             o2evo = ti_o2
-            model.reactions.EX_o2_e.upper_bound = o2evo
-            model.reactions.EX_o2_e.lower_bound = 0.9*o2evo
+            
+            model.reactions.EX_o2_e.bounds = (0.99*o2evo,o2evo)
+
         else:
             #unconstrained
-            model.reactions.EX_o2_e.upper_bound = 10000.   
-            model.reactions.EX_o2_e.lower_bound = -10000.
-        photon_usage[str(t)]['Absorbed']=total_absorbed
+            model.reactions.EX_o2_e.bounds = (-1000.,1000.)   
 
             # ________________________________Time point constraints_________________________________________#
 
         ngam = resp*60.*time_interval*cells
         model.reactions.NGAM.lower_bound = ngam
-        cef_rate = 5.*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
+        
+        if light == 'LL':
+            cef_val = 1.1 #5% of max LET
+        if light == 'HL': 
+            cef_val = 0.7 #5% of max LET
+        
+        cef_rate = cef_val*gDW/60.*time_interval #CEF sets CEF_h upper bound.  umol /(mgDW*h) * mgDW * h/60min * min/TI = umol/TI
         model.reactions.CEF_h.upper_bound = cef_rate
         
         
             #Photon constraints
-        model.reactions.EX_photon_e.lower_bound = total_absorbed*-1.
-        model.reactions.EX_photon_e.upper_bound = total_absorbed*-0.9999999
+            
+        model.reactions.EX_photon_e.bounds = (total_absorbed*-1.,total_absorbed*-0.999)
             
         if YII_const == True:
             if light == 'LL':
@@ -795,8 +767,7 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
                     yNPQ_LL = 0.     
                 phoYII = round(yII_LL,2) # Y(II)        
                 regNPQ = round(yNPQ_LL,2) # Y(NPQ)
-                regFvFm = round((1-FvFm_LL),2) # Photons lost upstream of PSII (1-Fv/Fm)
-                unrNPQ = round((1-phoYII-regNPQ-regFvFm),2) # Y(NO)
+                unrNPQ = round((1-phoYII-regNPQ),2) # Y(NO)
 
             if light == 'HL':
             ###### Parameters for PSII fluorescence
@@ -811,8 +782,7 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
                     yNPQ_HL = 0.                                            
                 phoYII = round(yII_HL,2) # Y(II)
                 regNPQ = round(yNPQ_HL,2) # Y(NPQ)
-                regFvFm = round((1-FvFm_HL),2) # Photons lost upstream of PSII (1-Fv/Fm)
-                unrNPQ = round((1-phoYII-regNPQ-regFvFm),2) # Y(NO)
+                unrNPQ = round((1-phoYII-regNPQ),2) # Y(NO)
         ### Edit model constraints with the appropriate values
         ## PHO_PSIIt_u
             rxn = model.reactions.PHO_PSIIt_u
@@ -827,12 +797,10 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
             m2 = model.metabolites.photon_YNPQ_u
             m4 = model.metabolites.photon_YNO_u
             m3 = model.metabolites.photon_h
-            m5 = model.metabolites.get_by_id('photon_1-FvFm_u')
             
             rxn.add_metabolites({m1:phoYII,
                                 m2:regNPQ,
                                 m4:unrNPQ,
-                                m5:regFvFm,
                                 m3:-1.})
         else:
         ### Edit model constraints with the appropriate values
@@ -855,26 +823,30 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
                                  m3:-1.})   
         
     ## Photon constraint
-        if photon_const == True:
-            model.reactions.DM_photon_c.upper_bound = 0. # constrained
+        if DM20 == True:
+            model.reactions.DM_photon_c.bounds = (-0.9999*0.2*(model.reactions.EX_photon_e.lower_bound),-0.2*(model.reactions.EX_photon_e.lower_bound))# 20% assumption 
 
-        elif DM20 == True:
-            model.reactions.DM_photon_c.upper_bound = -0.2*(model.reactions.EX_photon_e.lower_bound)       # 20% assumption
-            model.reactions.DM_photon_c.lower_bound = -0.9999*0.2*(model.reactions.EX_photon_e.lower_bound)# 20% assumption 
+        elif photon_const == True:
+            model.reactions.DM_photon_c.bounds = (0.,0.) # constrained
+            
         else:
-            model.reactions.DM_photon_c.upper_bound = 100000. # Unconstrained
+            model.reactions.DM_photon_c.bounds = (0.,10000.) # Unconstrained
 
         if D1_const == True:
             # Add D1 damage cost uncoupled to PSII
             # Damage rates
-            D1_rate = 7e-6# # LL: umol D1/mgDW h-1         <---- D1 Constraint
+            if light == 'HL':
+                D1_rate = 2.52e-4# # HL: umol D1/mgDW h-1         <---- D1 Constraint
+            if light == 'LL':
+                D1_rate = 7e-6# # LL: umol D1/mgDW h-1         <---- D1 Constraint
             D1_rate = D1_rate * gDW/60.# ugD1 ugDW-1 min-1 * mgDW * 1h/60 min = umolD1 min-1
             D1_rate = D1_rate * time_interval # umolD1 min-1 * min/TI = umol D1/TI
-            model.reactions.NGAM_D1_u.lower_bound = D1_rate #
-            model.reactions.NGAM_D1_u.upper_bound = 1.0001*(D1_rate) #
+
+            
+            model.reactions.NGAM_D1_u.bounds = (D1_rate, 1.0001*(D1_rate))
         else:
-            model.reactions.NGAM_D1_u.lower_bound = 0. #
-            model.reactions.NGAM_D1_u.upper_bound = 0. #
+            model.reactions.NGAM_D1_u.bounds = (0.,0.) 
+            
         ## Solve the model
         model.objective = 'bof_c'
         solution = cobra.flux_analysis.parsimonious.optimize_minimal_flux(model) 
@@ -882,12 +854,19 @@ def simulate(model,light,photon_const,Po_const,YII_const,D1_const,DM20):
             obj_rxn = model.reactions.bof_c
             
             biomass[str(t)]=(gDW+obj_rxn.x,(gDW+obj_rxn.x)/(mgCell))
+            
     mu = np.log(biomass[str(duration)]['Cells']/biomass['0']['Cells'])/(duration/60)
-    print('Growth rate: ',np.around(mu,3))
-    return biomass
-
-
-
+    save_model = model
+    print('***Simulation values (mmol gDW-1 h-1)***\n',
+          '**Values are for the final simulation interval**\n',
+          '*Growth rate is for the entire culture duration*\n',
+          'Total photons absorbed: ', (np.around(model.reactions.EX_photon_e.lower_bound/gDW*-3.,1)),'\n',
+          'Photons allowed to be lost upstream of the photosystems: ', (np.around(model.reactions.DM_photon_c.upper_bound/gDW*3.,1)),'\n',
+          'Oxygen exchange constraint: ', (np.around(model.reactions.EX_o2_e.upper_bound/gDW*3.,1)),'\n',
+          'Y(II) constraint: ', model.reactions.PHO_PSIIt_u.reaction,'\n',
+          'D1 damage constraint: ',(np.around(model.reactions.NGAM_D1_u.upper_bound/gDW*3.,1)),'\n',
+          'Growth rate: ',np.around(mu,3),' h-1\n')
+    return biomass, save_model
 
 
 
